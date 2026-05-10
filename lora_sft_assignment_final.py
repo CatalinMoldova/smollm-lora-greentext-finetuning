@@ -52,7 +52,8 @@ For the first step, we install the necessary packages. For this project we will 
 - trl: Simplifies SFT and other tuning methods for language models
 """
 
-!pip install datasets trl
+# Install dependencies before running this script:
+#   pip install transformers peft datasets trl wandb accelerate
 
 """**If you encounter such a message as shown below, restart the runtime and continue from below cells**
 
