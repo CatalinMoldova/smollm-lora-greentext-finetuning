@@ -269,14 +269,17 @@ def calculate_perplexity(log_loss):
     perplexity = math.exp(log_loss)
     return perplexity
 
-import wandb, math, matplotlib.pyplot as plt
+import math, matplotlib.pyplot as plt
 
-api = wandb.Api()
-run = api.run("cb5330-new-york-university/huggingface/t4d17w74")
-hist = run.history(keys=["train/loss"])
+def loss_curve(trainer):
+    steps, losses = [], []
+    for entry in trainer.state.log_history:
+        if 'loss' in entry and 'eval_loss' not in entry:
+            steps.append(entry['step'])
+            losses.append(entry['loss'])
+    return steps, losses
 
-s16 = hist["_step"].tolist()
-l16 = hist["train/loss"].tolist()
+s16, l16 = loss_curve(trainer)
 ppl16 = [math.exp(x) for x in l16]
 
 # --- Print perplexity at checkpoint steps ---
@@ -415,7 +418,7 @@ print("After FINE-TUNING Ablation (base SmolLM-135M + LoRA)")
 print("=" * 60)
 after_outputs = {}
 for p in baseline_prompts:
-    out = generate_response(model, tokenizer, p)
+    out = generate_response(model_ab, tokenizer, p)
     after_outputs[p] = out
     print(out)
     print("-" * 60)
