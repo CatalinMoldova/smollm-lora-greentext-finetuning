@@ -269,14 +269,19 @@ def calculate_perplexity(log_loss):
     perplexity = math.exp(log_loss)
     return perplexity
 
-import wandb, math, matplotlib.pyplot as plt
+import math, matplotlib.pyplot as plt
 
-api = wandb.Api()
-run = api.run("cb5330-new-york-university/huggingface/t4d17w74")
-hist = run.history(keys=["train/loss"])
+def loss_curve(trainer):
+    steps, losses = [], []
+    for entry in trainer.state.log_history:
+        if "loss" in entry and "eval_loss" not in entry:
+            steps.append(entry["step"])
+            losses.append(entry["loss"])
+    if not steps:
+        raise ValueError("No training loss found. Run trainer.train() before plotting perplexity.")
+    return steps, losses
 
-s16 = hist["_step"].tolist()
-l16 = hist["train/loss"].tolist()
+s16, l16 = loss_curve(trainer)
 ppl16 = [math.exp(x) for x in l16]
 
 # --- Print perplexity at checkpoint steps ---
