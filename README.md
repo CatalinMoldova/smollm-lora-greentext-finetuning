@@ -1,151 +1,180 @@
 # LoRA Fine-Tuning of SmolLM-135M on Greentexts
 
-Supervised fine-tuning of [`HuggingFaceTB/SmolLM-135M`](https://huggingface.co/HuggingFaceTB/SmolLM-135M) using Low-Rank Adaptation (LoRA), with a rank ablation and perplexity-based evaluation. Built as Homework 5 for **Advanced AI and Machine Learning** (Prof. Keith Ross, NYU).
-
-**Author:** Catalin Botezat
-
----
+Parameter-efficient supervised fine-tuning of `HuggingFaceTB/SmolLM-135M` using Low-Rank Adaptation (LoRA), with rank ablation, Weights & Biases tracking, perplexity evaluation, and qualitative generation analysis.
 
 ## Overview
 
-LoRA (Low-Rank Adaptation) freezes a pre-trained model's weights and only trains small low-rank matrices *A* and *B* injected into selected linear layers, such that the effective weight becomes *W ≈ W₀ + BA*. This makes fine-tuning a 135M-parameter LLM feasible on a free Colab T4.
+This project explores how LoRA can be used to fine-tune a small language model efficiently on limited hardware. Instead of updating all model weights, LoRA freezes the base model and trains low-rank adapter matrices inside selected attention and MLP projection layers.
 
-This project:
+The experiment fine-tunes `SmolLM-135M` on a small greentext-style dataset and compares two LoRA ranks:
 
-1. Fine-tunes SmolLM-135M on the [`maxmyn/wholesome_greentext_110k`](https://huggingface.co/datasets/maxmyn/wholesome_greentext_110k) dataset (first 100 rows).
-2. Evaluates the model using **perplexity** across training checkpoints.
-3. Generates text before and after fine-tuning on a fixed set of prompts.
-4. Runs an **ablation** on LoRA rank (*r* = 16 vs *r* = 4).
-5. Logs training loss to **Weights & Biases**.
+* `r = 16`
+* `r = 4`
 
----
+The main goal is not only to reduce training loss, but to understand how rank, dataset size, and training duration affect generation quality, memorization, and repetition.
 
-## Repository Contents
+## Key Question
 
-| File | Description |
-|---|---|
-| `LoRA_SFT_Assignment_final.ipynb` | Main Colab notebook — data loading, LoRA setup, SFT training, evaluation, ablation. |
-| `HW5_LoRA_Report_Botezat.pdf` | Final PDF report with all results and discussion. |
-| `HW5_LoRA_Report_Botezat.tex` | LaTeX source for the report. |
-| `wandb_loss.png` | Training loss screenshot from Weights & Biases. |
-| `README.md` | This file. |
+Can a small language model learn the surface style of a dataset through LoRA fine-tuning, and what failure modes appear when the dataset is too small?
 
----
+## Why This Project Matters
 
-## Setup
+LoRA is widely used for parameter-efficient fine-tuning of language models because it reduces memory cost and makes adaptation possible on consumer or free cloud GPUs. This project demonstrates the full workflow:
 
-### Requirements
+* Loading a pretrained Hugging Face language model
+* Applying LoRA adapters with PEFT
+* Running supervised fine-tuning
+* Logging loss with Weights & Biases
+* Evaluating perplexity across checkpoints
+* Comparing LoRA ranks
+* Inspecting qualitative generation failures
 
-- Python 3.10+
-- CUDA-capable GPU (tested on Colab T4 with fp16)
-- A [Weights & Biases](https://wandb.ai) account (free tier is sufficient)
+## Technical Stack
 
-### Installation
+* Python
+* PyTorch
+* Hugging Face Transformers
+* Hugging Face Datasets
+* PEFT
+* TRL / SFTTrainer
+* Weights & Biases
+* Google Colab T4 GPU
 
-```bash
-pip install transformers peft datasets trl wandb accelerate
+## Model and Dataset
+
+| Component          | Value                                                                       |
+| ------------------ | --------------------------------------------------------------------------- |
+| Base model         | `HuggingFaceTB/SmolLM-135M`                                                 |
+| Dataset            | `maxmyn/wholesome_greentext_110k`                                           |
+| Training subset    | First 100 rows                                                              |
+| Fine-tuning method | LoRA                                                                        |
+| Target modules     | `q_proj`, `k_proj`, `v_proj`, `o_proj`, `up_proj`, `down_proj`, `gate_proj` |
+| Main LoRA rank     | `r = 16`                                                                    |
+| Ablation rank      | `r = 4`                                                                     |
+| LoRA alpha         | `32`                                                                        |
+| LoRA dropout       | `0.05`                                                                      |
+| Learning rate      | `2e-4`                                                                      |
+| Batch size         | `4`                                                                         |
+| Max steps          | `500`                                                                       |
+| Precision          | `fp16`                                                                      |
+| Inference sampling | `temperature = 0.7`, `top_p = 0.9`                                          |
+
+## Results
+
+### Training Loss
+
+The main `r = 16` run reduced training loss from approximately `3.8` to `0.2` over 500 training steps.
+
+The first 100 steps showed the fastest improvement, suggesting that the model quickly learned the surface structure of greentexts: short lines, imperative phrasing, and the `>` prefix.
+
+### Perplexity by Checkpoint
+
+| Step | PPL, r = 16 | PPL, r = 4 |
+| ---: | ----------: | ---------: |
+|    0 |       29.96 |      29.95 |
+|  100 |        4.68 |       4.37 |
+|  200 |        1.49 |       2.55 |
+|  300 |        1.25 |       1.44 |
+|  400 |        1.19 |       1.29 |
+|  500 |        1.28 |       1.29 |
+
+The `r = 16` model reached low perplexity faster than `r = 4`, but both runs converged to nearly the same final training-set perplexity.
+
+This suggests that, on a very small dataset, the higher-rank adapter mostly improves fitting speed rather than final quality.
+
+## Qualitative Findings
+
+Fine-tuning improved the model’s ability to generate greentext-style outputs. The model became more consistent at producing short `>`-prefixed lines and stayed more on-topic for some prompts.
+
+However, generation also revealed a key failure mode: repetition.
+
+Examples included repeated phrases such as:
+
+```text
+> Order more
+> Order more
+> Order more
 ```
 
-### Authentication
+and repeated quest-like completions in the treasure-hunt prompt.
 
-```python
-import wandb
-wandb.login()  # paste API key from https://wandb.ai/authorize
-```
+This shows that low training loss does not necessarily mean good generation quality. In this experiment, low loss mostly reflected memorization caused by the tiny training set and many effective passes over the same examples.
 
----
+## Main Takeaways
+
+1. LoRA made it possible to fine-tune a 135M-parameter model efficiently on a Colab T4 GPU.
+2. Higher rank (`r = 16`) fitted the small dataset faster than lower rank (`r = 4`).
+3. Final training-set perplexities were almost identical for both ranks.
+4. Qualitative evaluation was more revealing than loss alone.
+5. The dominant failure mode was repetition caused by overfitting.
+6. A proper held-out validation split is necessary for measuring generalization.
+
+## Limitations
+
+This was intentionally a small-scale experiment, but it has important limitations:
+
+* Perplexity was evaluated on the training set, not a held-out validation set.
+* Only 100 examples were used for fine-tuning.
+* The model saw each example many times, increasing memorization.
+* The ablation kept `alpha = 32` fixed while changing rank, so the effective LoRA scaling changed.
+* Only a small number of qualitative prompts were tested.
+
+## Future Work
+
+Planned improvements:
+
+* Add a proper train/validation/test split.
+* Scale the dataset from 100 examples to 1,000–10,000 examples.
+* Sweep rank/alpha pairs while keeping `alpha / r` constant.
+* Add quantitative generation metrics such as distinct-n for repetition.
+* Compare LoRA with full fine-tuning and prefix tuning.
+* Publish the trained adapter to Hugging Face Hub.
+* Add an interactive demo for before/after generation comparison.
 
 ## How to Run
 
-The notebook is designed to run end-to-end in Google Colab. Execute the cells in order:
+Install dependencies:
 
-1. **Install & import** dependencies.
-2. **Authenticate** with W&B.
-3. **Load** SmolLM-135M, tokenizer, and the greentext dataset (first 100 rows).
-4. **Generate baseline outputs** from the un-tuned model for four fixed prompts.
-5. **Configure LoRA** and wrap the model with `get_peft_model`.
-6. **Train** with `SFTTrainer` for 500 steps; checkpoints saved every 100 steps to Google Drive.
-7. **Evaluate** perplexity at each checkpoint.
-8. **Generate post-training outputs** for the same prompts.
-9. **Ablation** — repeat with *r* = 4 and compare.
+```bash
+pip install -r requirements.txt
+```
 
-Checkpoints are saved to `/content/drive/MyDrive/AI_ML_HW5_Checkpoints/` — adjust this path if you're not running in Colab.
+Train the LoRA adapter:
 
----
+```bash
+python src/train_lora.py --config configs/lora_r16.yaml
+```
 
-## Configuration
+Evaluate perplexity:
 
-Main training run:
+```bash
+python src/evaluate_perplexity.py --checkpoint checkpoints/r16-step-500
+```
 
-| Hyperparameter | Value |
-|---|---|
-| Base model | `HuggingFaceTB/SmolLM-135M` |
-| Target modules | `q_proj, k_proj, v_proj, o_proj, up_proj, down_proj, gate_proj` |
-| LoRA rank *r* | 16 (main) / 4 (ablation) |
-| LoRA α | 32 |
-| LoRA dropout | 0.05 |
-| Learning rate | 2e-4 |
-| Batch size | 4 |
-| Max steps | 500 |
-| Precision | fp16 |
-| Inference sampling | *T* = 0.7, top-*p* = 0.9 |
+Generate sample outputs:
 
----
+```bash
+python src/generate_samples.py --checkpoint checkpoints/r16-step-500
+```
 
-## Results Summary
+## Repository Structure
 
-### Training loss
+```text
+src/        Training, evaluation, and generation scripts
+notebooks/  Clean research notebook
+configs/    LoRA configuration files
+results/    Perplexity tables and generation examples
+assets/     Plots and visual summaries
+report/     Full written report
+```
 
-Loss drops from ~3.8 to ~0.2 across 500 steps, with a steep descent in the first 100 steps (format acquisition) and a plateau from ~300 onward.
+## Project Origin
 
-### Perplexity on training set
-
-| Step | *r* = 16 | *r* = 4 |
-|---:|---:|---:|
-| 0 | 29.96 | 29.95 |
-| 100 | 4.68 | 4.37 |
-| 200 | 1.49 | 2.55 |
-| 300 | 1.25 | 1.44 |
-| 400 | 1.19 | 1.29 |
-| 500 | 1.28 | 1.29 |
-
-Both configurations converge to essentially the same final perplexity. *r* = 16 fits the data faster; *r* = 4 is slower but reaches a comparable endpoint.
-
-### Generation quality
-
-After fine-tuning, the model consistently produces the greentext surface format (`>`-prefixed imperative clauses) across all prompts. Semantic coherence improves over the base model but remains shallow, and **repetition is the dominant failure mode** — a direct consequence of training on only 100 examples for ~20 effective epochs.
-
-See the PDF report for full prompt-by-prompt before/after comparisons.
-
----
-
-## Key Caveats
-
-- **Evaluation is on the training set.** The notebook passes `eval_dataset=train_dataset`, so reported perplexities reflect fit, not generalization. A proper held-out split would give noticeably higher numbers.
-- **Dataset size is tiny.** 100 examples × 500 steps ÷ batch 4 ≈ 20 passes per example. Low loss here is evidence of memorization, not language modeling quality.
-- **Ablation is confounded.** α was fixed at 32 while *r* was halved, so the effective update magnitude per LoRA direction was not held constant. A cleaner ablation would scale α with *r* (e.g. *r* = 4 with α = 8).
-
----
-
-## What I'd Do Differently
-
-- Add a proper train/validation split and report held-out perplexity.
-- Scale the dataset to 10³–10⁴ examples to move past the memorization regime.
-- Sweep (*r*, α) pairs that keep α/*r* constant.
-- Add quantitative generation metrics (distinct-*n* for repetition, BLEU/ROUGE for fluency) on a larger, disjoint prompt set.
-- Try `repetition_penalty` at inference to mitigate the repetition without retraining (symptomatic fix, not a cure).
-
----
+This project was originally developed as part of an Advanced AI & Machine Learning course and later refactored into a standalone ML portfolio project focused on LoRA, PEFT, ablation design, and model failure analysis.
 
 ## References
 
-- [Hu et al., "LoRA: Low-Rank Adaptation of Large Language Models" (2021)](https://arxiv.org/abs/2106.09685)
-- [Hugging Face PEFT documentation](https://huggingface.co/docs/peft)
-- [TRL `SFTTrainer` documentation](https://huggingface.co/docs/trl/sft_trainer)
-- [SmolLM-135M model card](https://huggingface.co/HuggingFaceTB/SmolLM-135M)
-
----
-
-## License
-
-Academic coursework. Code and report are provided as-is for reference.
+* Hu et al., “LoRA: Low-Rank Adaptation of Large Language Models”
+* Hugging Face PEFT documentation
+* Hugging Face TRL SFTTrainer documentation
+* HuggingFaceTB/SmolLM-135M
