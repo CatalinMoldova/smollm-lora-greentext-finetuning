@@ -1,0 +1,32 @@
+model_name: HuggingFaceTB/SmolLM-135M
+dataset_name: maxmyn/wholesome_greentext_110k
+dataset_split: "train[:100]"
+
+lora:
+  r: 4
+  lora_alpha: 32
+  lora_dropout: 0.05
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - up_proj
+    - down_proj
+    - gate_proj
+  bias: none
+  task_type: CAUSAL_LM
+
+training:
+  per_device_train_batch_size: 4
+  learning_rate: 2.0e-4
+  max_steps: 500
+  save_steps: 100
+  logging_steps: 1
+  fp16: true
+  bf16: false
+  dataset_text_field: greentexts
+  run_name: "SmolLM-135M r=4"
+  report_to: wandb
+
+output_dir: checkpoints/r4

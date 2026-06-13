@@ -2,6 +2,40 @@
 
 Parameter-efficient supervised fine-tuning of `HuggingFaceTB/SmolLM-135M` using Low-Rank Adaptation (LoRA), with rank ablation, Weights & Biases tracking, perplexity evaluation, and qualitative generation analysis.
 
+**Author:** Catalin Botezat
+
+## Repository Structure
+
+```
+lora-sft-smollm-greentext/
+├── README.md
+├── src/
+│   ├── train_lora.py
+│   ├── evaluate_perplexity.py
+│   ├── generate_samples.py
+│   └── config.py
+├── notebooks/
+│   └── lora_sft_smollm_greentext.ipynb
+├── configs/
+│   ├── lora_r16.yaml
+│   └── lora_r4.yaml
+├── results/
+│   ├── perplexity_by_checkpoint.csv
+│   ├── generation_examples.md
+│   └── ablation_summary.md
+├── assets/
+│   ├── training_loss.png
+│   ├── perplexity_curve.png
+│   └── before_after_generation.png
+├── report/
+│   └── lora_smollm_greentext_ablation_report.pdf
+├── requirements.txt
+├── .gitignore
+└── LICENSE
+```
+
+---
+
 ## Overview
 
 This project explores how LoRA can be used to fine-tune a small language model efficiently on limited hardware. Instead of updating all model weights, LoRA freezes the base model and trains low-rank adapter matrices inside selected attention and MLP projection layers.
@@ -59,15 +93,46 @@ LoRA is widely used for parameter-efficient fine-tuning of language models becau
 | Precision          | `fp16`                                                                      |
 | Inference sampling | `temperature = 0.7`, `top_p = 0.9`                                          |
 
+## Setup
+
+```bash
+pip install -r requirements.txt
+```
+
+For W&B logging:
+
+```python
+import wandb
+wandb.login()  # API key from https://wandb.ai/authorize
+```
+
+## How to Run
+
+**Option A — Notebook (recommended for Colab):**
+
+Open and run `notebooks/lora_sft_smollm_greentext.ipynb` cell by cell.
+
+**Option B — Scripts:**
+
+```python
+from src.train_lora import train_from_config
+
+trainer = train_from_config("configs/lora_r16.yaml")
+```
+
+Configs live in `configs/lora_r16.yaml` and `configs/lora_r4.yaml`.
+
 ## Results
 
-### Training Loss
+### Training loss (W&B)
 
-The main `r = 16` run reduced training loss from approximately `3.8` to `0.2` over 500 training steps.
+![Training loss](assets/training_loss.png)
 
-The first 100 steps showed the fastest improvement, suggesting that the model quickly learned the surface structure of greentexts: short lines, imperative phrasing, and the `>` prefix.
+The main `r = 16` run reduced training loss from approximately `3.8` to `0.2` over 500 training steps. The first 100 steps showed the fastest improvement, suggesting that the model quickly learned the surface structure of greentexts.
 
-### Perplexity by Checkpoint
+### Perplexity by checkpoint
+
+![Perplexity curve](assets/perplexity_curve.png)
 
 | Step | PPL, r = 16 | PPL, r = 4 |
 | ---: | ----------: | ---------: |
@@ -80,11 +145,11 @@ The first 100 steps showed the fastest improvement, suggesting that the model qu
 
 The `r = 16` model reached low perplexity faster than `r = 4`, but both runs converged to nearly the same final training-set perplexity.
 
-This suggests that, on a very small dataset, the higher-rank adapter mostly improves fitting speed rather than final quality.
+Full tables and generation examples: [`results/`](results/). PDF report: [`report/lora_smollm_greentext_ablation_report.pdf`](report/lora_smollm_greentext_ablation_report.pdf).
 
 ## Qualitative Findings
 
-Fine-tuning improved the model’s ability to generate greentext-style outputs. The model became more consistent at producing short `>`-prefixed lines and stayed more on-topic for some prompts.
+Fine-tuning improved the model's ability to generate greentext-style outputs. The model became more consistent at producing short `>`-prefixed lines and stayed more on-topic for some prompts.
 
 However, generation also revealed a key failure mode: repetition.
 
@@ -95,8 +160,6 @@ Examples included repeated phrases such as:
 > Order more
 > Order more
 ```
-
-and repeated quest-like completions in the treasure-hunt prompt.
 
 This shows that low training loss does not necessarily mean good generation quality. In this experiment, low loss mostly reflected memorization caused by the tiny training set and many effective passes over the same examples.
 
@@ -111,8 +174,6 @@ This shows that low training loss does not necessarily mean good generation qual
 
 ## Limitations
 
-This was intentionally a small-scale experiment, but it has important limitations:
-
 * Perplexity was evaluated on the training set, not a held-out validation set.
 * Only 100 examples were used for fine-tuning.
 * The model saw each example many times, increasing memorization.
@@ -121,52 +182,11 @@ This was intentionally a small-scale experiment, but it has important limitation
 
 ## Future Work
 
-Planned improvements:
-
 * Add a proper train/validation/test split.
 * Scale the dataset from 100 examples to 1,000–10,000 examples.
 * Sweep rank/alpha pairs while keeping `alpha / r` constant.
 * Add quantitative generation metrics such as distinct-n for repetition.
 * Compare LoRA with full fine-tuning and prefix tuning.
-* Publish the trained adapter to Hugging Face Hub.
-* Add an interactive demo for before/after generation comparison.
-
-## How to Run
-
-Install dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
-Train the LoRA adapter:
-
-```bash
-python src/train_lora.py --config configs/lora_r16.yaml
-```
-
-Evaluate perplexity:
-
-```bash
-python src/evaluate_perplexity.py --checkpoint checkpoints/r16-step-500
-```
-
-Generate sample outputs:
-
-```bash
-python src/generate_samples.py --checkpoint checkpoints/r16-step-500
-```
-
-## Repository Structure
-
-```text
-src/        Training, evaluation, and generation scripts
-notebooks/  Clean research notebook
-configs/    LoRA configuration files
-results/    Perplexity tables and generation examples
-assets/     Plots and visual summaries
-report/     Full written report
-```
 
 ## Project Origin
 
@@ -174,7 +194,11 @@ This project was originally developed as part of an Advanced AI & Machine Learni
 
 ## References
 
-* Hu et al., “LoRA: Low-Rank Adaptation of Large Language Models”
-* Hugging Face PEFT documentation
-* Hugging Face TRL SFTTrainer documentation
-* HuggingFaceTB/SmolLM-135M
+* [Hu et al., LoRA (2021)](https://arxiv.org/abs/2106.09685)
+* [Hugging Face PEFT](https://huggingface.co/docs/peft)
+* [TRL SFTTrainer](https://huggingface.co/docs/trl/sft_trainer)
+* [SmolLM-135M](https://huggingface.co/HuggingFaceTB/SmolLM-135M)
+
+## License
+
+Academic coursework. Code and report are provided as-is for reference.
